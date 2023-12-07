@@ -2,6 +2,7 @@ use std::collections::{HashSet, HashMap};
 use std::iter::zip;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::seq::SliceRandom;
 use std::fs;
@@ -56,11 +57,28 @@ struct Configuration {
 
 impl Configuration {
 
+    fn ensure_exclusions_satisfied(&self, permutation: &Permutation) -> Result<(), String> {
+        // Test the permutation to see if it satisfies the exclusion constraints of the participants
+
+        for assignment in permutation.assignments.iter() {
+            // Make sure nobody is sending a present to somebody they excluded (i.e. tt_id is not in the excluded_recipient_id of the participant with ID sender_id)
+            if self.cannot_send_to[&assignment.recipient].contains(&assignment.sender) {
+                return Err(format!("Invalid permutation: {:?} cannot send to {:?}", assignment.sender.name, assignment.recipient.name));
+            }
+            // Make sure nobody is getting a present from somebody they excluded (i.e. the sender_id is not in the excluded_sender_id of the participant with ID recipient_id)
+            if self.cannot_receive_from[&assignment.sender].contains(&assignment.recipient) {
+                return Err(format!("Invalid permutation: {:?} cannot receive from {:?}", assignment.sender.name, assignment.recipient.name));
+            }
+        }
+
+        Ok(())
+    }
+    
     fn ensure_valid_permutation(&self, permutation: &Permutation) -> Result<(), String> {
         // Test the permutation to see if it is a valid permutation of the participants
         // i.e. it is a derangement and it satisfies the exclusion constraints
         permutation.ensure_is_derangement()?;
-        permutation.ensure_exclusions_satisfied(&self)?;
+        self.ensure_exclusions_satisfied(permutation)?;
         Ok(())
     }
 }
@@ -91,7 +109,7 @@ impl Permutation {
             all_senders.insert(Rc::clone(&assignment.sender));
             all_recipients.insert(Rc::clone(&assignment.recipient));
         }
-
+         
         // Make sure every participant appears as a sender once and as a recipient once
         if all_senders.len() != participants.len() {
             return Err(format!("Invalid permutation: number of unique sender IDs ({}) does not match number of participants ({})", all_senders.len(), participants.len()));
@@ -107,30 +125,13 @@ impl Permutation {
         // Test the permutation to see if it is a derangement of the participants
         // A derangement is a permutation of elements in a set in which no element appears in it's original position
 
-        // Make sure no sender has themselves as a recipient
+        // i.e., make sure no sender has themselves as a recipient
         for assignment in self.assignments.iter() {
             if assignment.sender == assignment.recipient {
                 return Err(format!("Invalid permutation: {:?} is sending to themselves", assignment.sender.name));
             }
         }
         
-        Ok(())
-    }
-
-    fn ensure_exclusions_satisfied(&self, configuration: &Configuration) -> Result<(), String> {
-        // Test the permutation to see if it satisfies the exclusion constraints of the participants
-
-        for assignment in self.assignments.iter() {
-            // Make sure nobody is sending a present to somebody they excluded (i.e. tt_id is not in the excluded_recipient_id of the participant with ID sender_id)
-            if configuration.cannot_send_to[&assignment.recipient].contains(&assignment.sender) {
-                return Err(format!("Invalid permutation: {:?} cannot send to {:?}", assignment.sender.name, assignment.recipient.name));
-            }
-            // Make sure nobody is getting a present from somebody they excluded (i.e. the sender_id is not in the excluded_sender_id of the participant with ID recipient_id)
-            if configuration.cannot_receive_from[&assignment.sender].contains(&assignment.recipient) {
-                return Err(format!("Invalid permutation: {:?} cannot receive from {:?}", assignment.sender.name, assignment.recipient.name));
-            }
-        }
-
         Ok(())
     }
 
@@ -231,42 +232,38 @@ fn generate_valid_permutation(configuration: Configuration, do_be_verbose: bool)
     // Generate random permutation matrices and test them until we find one that is 1. a derangement and 2. satisfies exclusion constraints
 
     let mut rng = thread_rng();
-
-    let mut loop_count: u128 = 0;
-    loop {
-        loop_count += 1;
-        if do_be_verbose { println!("Trying permutation #{}:", loop_count) };
-
+    
+    fn gen_iter(rng: &mut ThreadRng, configuration: &Configuration) -> Result<Permutation, String> {
         let participants_randomized = {
             let mut participants: Vec<&Rc<Participant>> = Vec::from_iter(configuration.participants.iter());
-            participants.shuffle(&mut rng);
+            participants.shuffle(rng);
+        
             participants
         };
-        let possible_assignments = zip(configuration.participants.iter(), participants_randomized).map(
+        let random_assignments = zip(configuration.participants.iter(), participants_randomized).map(
             |(p1, p2)| Assignment {
                 sender: Rc::clone(p1),
                 recipient: Rc::clone(p2),
             }
         ).collect();
 
-        let possible_permutation = Permutation::try_new(possible_assignments, &configuration.participants);
-        let permutation = match possible_permutation {
-             Err(message) => {
-                 if do_be_verbose { println!("{}", message) }
-                 continue;
-             },
-             Ok(permutation) => {
-                 match configuration.ensure_valid_permutation(&permutation) {
-                     Err(message) => {
-                         if do_be_verbose { println!("{}", message) }
-                         continue;
-                     },
-                     Ok(_) => permutation,
-                 }
-             }
-         };
+        let permutation = Permutation::try_new(random_assignments, &configuration.participants)?;
+        configuration.ensure_valid_permutation(&permutation)?;
+        Ok(permutation)
+    }
 
-         return permutation;
+    let mut loop_count: u128 = 0;
+
+    loop {
+        loop_count += 1;
+        if do_be_verbose { println!("Trying permutation #{}:", loop_count) };
+
+        match gen_iter(&mut rng, &configuration) {
+            Err(message) => {
+                if do_be_verbose { println!("{}", message) }
+            },
+            Ok(permutation) => return permutation,
+        }
     }
 }
 
