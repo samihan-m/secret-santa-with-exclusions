@@ -4,11 +4,16 @@ use rand::thread_rng;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::iter::zip;
 use std::rc::Rc;
 
 use clap::Parser;
+
+mod configuration;
+mod permutation;
+
+use crate::configuration::{Configuration, Participant};
+use crate::permutation::{Permutation, Assignment};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -25,134 +30,10 @@ struct Args {
     do_be_verbose: bool,
 }
 
-#[derive(Debug)]
-struct Participant {
-    // Assuming first name is unique because each person has a unique option in the Google Form
-    // Will use this value like an ID for the participant
-    name: String,
-    discord_handle: String,
-    mailing_info: String,
-    interests: String,
-}
-
-impl PartialEq for Participant {
-    fn eq(&self, other: &Participant) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for Participant {}
-
-impl Hash for Participant {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-#[derive(Debug)]
-struct Configuration {
-    participants: HashSet<Rc<Participant>>,
-    cannot_send_to: HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
-    cannot_receive_from: HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
-}
-
-impl Configuration {
-    fn ensure_exclusions_satisfied(&self, permutation: &Permutation) -> Result<(), String> {
-        // Test the permutation to see if it satisfies the exclusion constraints of the participants
-
-        for assignment in permutation.assignments.iter() {
-            // Make sure nobody is sending a present to somebody they excluded (i.e. tt_id is not in the excluded_recipient_id of the participant with ID sender_id)
-            if self.cannot_send_to[&assignment.recipient].contains(&assignment.sender) {
-                return Err(format!(
-                    "Invalid permutation: {:?} cannot send to {:?}",
-                    assignment.sender.name, assignment.recipient.name
-                ));
-            }
-            // Make sure nobody is getting a present from somebody they excluded (i.e. the sender_id is not in the excluded_sender_id of the participant with ID recipient_id)
-            if self.cannot_receive_from[&assignment.sender].contains(&assignment.recipient) {
-                return Err(format!(
-                    "Invalid permutation: {:?} cannot receive from {:?}",
-                    assignment.sender.name, assignment.recipient.name
-                ));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn ensure_valid_permutation(&self, permutation: &Permutation) -> Result<(), String> {
-        // Test the permutation to see if it is a valid permutation of the participants
-        // i.e. it is a derangement and it satisfies the exclusion constraints
-        permutation.ensure_is_derangement()?;
-        self.ensure_exclusions_satisfied(permutation)?;
-        Ok(())
-    }
-}
-
-#[derive(Hash, PartialEq, Eq)]
-struct Assignment {
-    sender: Rc<Participant>,
-    recipient: Rc<Participant>,
-}
-
-struct Permutation {
-    assignments: HashSet<Assignment>,
-}
-
-impl Permutation {
-    fn try_new(
-        assignments: HashSet<Assignment>,
-        participants: &HashSet<Rc<Participant>>,
-    ) -> Result<Permutation, String> {
-        // Smart constructor to check it is actually a permutation
-
-        // Make sure we have 1 assignment per participant
-        if assignments.len() != participants.len() {
-            return Err(format!("Invalid permutation: number of assignments ({}) does not match number of participants ({})", assignments.len(), participants.len()));
-        }
-
-        let all_senders: HashSet<_> = assignments
-            .iter()
-            .map(|assignment| Rc::clone(&assignment.sender))
-            .collect();
-        let all_recipients: HashSet<_> = assignments
-            .iter()
-            .map(|assignment| Rc::clone(&assignment.recipient))
-            .collect();
-
-        // Make sure every participant appears as a sender once and as a recipient once
-        if all_senders.len() != participants.len() {
-            return Err(format!("Invalid permutation: number of unique sender IDs ({}) does not match number of participants ({})", all_senders.len(), participants.len()));
-        }
-        if all_recipients.len() != participants.len() {
-            return Err(format!("Invalid permutation: number of unique recipient IDs ({}) does not match number of participants ({})", all_recipients.len(), participants.len()));
-        }
-
-        Ok(Permutation { assignments })
-    }
-
-    fn ensure_is_derangement(&self) -> Result<(), String> {
-        // Test the permutation to see if it is a derangement of the participants
-        // A derangement is a permutation of elements in a set in which no element appears in it's original position
-
-        // i.e., make sure no sender has themselves as a recipient
-        for assignment in self.assignments.iter() {
-            if assignment.sender == assignment.recipient {
-                return Err(format!(
-                    "Invalid permutation: {:?} is sending to themselves",
-                    assignment.sender.name
-                ));
-            }
-        }
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, serde::Deserialize)]
 struct FormSubmission {
     #[serde(rename = "Timestamp")]
-    timestamp: String,
+    _timestamp: String,
     #[serde(rename = "Who are you?")]
     name: String,
     #[serde(rename = "Your Discord Handle")]
@@ -172,7 +53,7 @@ struct FormSubmission {
     #[serde(rename = "Interests")]
     interests: String,
     #[serde(rename = "Anything Else?")]
-    anything_else: String,
+    _anything_else: String,
 }
 
 fn deserialize_vec_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -230,7 +111,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
             )
         })
         .collect();
-        
+
     let cannot_receive_from: HashMap<Rc<Participant>, HashSet<Rc<Participant>>> = submissions
         .iter()
         .map(|submission| {
@@ -258,7 +139,10 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
     }
 }
 
-fn generate_valid_permutation(configuration: Configuration, do_be_verbose: bool) -> Permutation {
+fn generate_valid_permutation(
+    configuration: Configuration,
+    do_be_verbose: bool,
+) -> Permutation<Participant> {
     // Repeatedly try different derangements until we find one that satisfies the exclusion constraints
 
     // We have an n x n matrix (where n is the number of participants)
@@ -269,7 +153,10 @@ fn generate_valid_permutation(configuration: Configuration, do_be_verbose: bool)
 
     let mut rng = thread_rng();
 
-    fn gen_iter(rng: &mut ThreadRng, configuration: &Configuration) -> Result<Permutation, String> {
+    fn gen_iter(
+        rng: &mut ThreadRng,
+        configuration: &Configuration,
+    ) -> Result<Permutation<Participant>, String> {
         let participants_randomized = {
             let mut participants: Vec<&Rc<Participant>> =
                 Vec::from_iter(configuration.participants.iter());
@@ -307,7 +194,7 @@ fn generate_valid_permutation(configuration: Configuration, do_be_verbose: bool)
     }
 }
 
-fn write_matching_files(permutation: Permutation, output_directory: &str) -> String {
+fn write_matching_files(permutation: Permutation<Participant>, output_directory: &str) -> String {
     // Create matchings directory if necessary
     if let Err(_) = fs::create_dir(output_directory) {
         eprintln!(
