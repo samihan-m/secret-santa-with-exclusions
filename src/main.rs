@@ -281,8 +281,9 @@ fn write_matching_files(permutation: Permutation, output_directory: &str) -> Str
         let padding_disclaimer = "SCROLL DOWN TO SEE WHO YOU GOT\nTHIS IS TO HIDE IT FROM THE DISCORD EMBED\n".to_string();
         let vertical_padding = &"|\n".repeat(25);
         let information = &format!("You are the Secret Santa for {}! ({})\n\nAddress:\n{}\n\nTheir interests are:\n{}", recipient.name, recipient.discord_handle, recipient.full_name_and_address, recipient.interests);
+        let closing = &"\n\n\n\nRemember to check the Google Form for information about suggested price range and gift 'due date'! Happy gifting!".to_string();
 
-        fs::write(format!("{}/{}.txt", output_directory, sender.name), format!("{}", padding_disclaimer + vertical_padding + information)).unwrap();
+        fs::write(format!("{}/{}.txt", output_directory, sender.name), format!("{}", padding_disclaimer + vertical_padding + information + closing)).unwrap();
     }
 
     return output_directory;
