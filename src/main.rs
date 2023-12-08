@@ -102,14 +102,9 @@ impl Permutation {
             return Err(format!("Invalid permutation: number of assignments ({}) does not match number of participants ({})", assignments.len(), participants.len()));
         }
 
-        let mut all_senders: HashSet<Rc<Participant>> = HashSet::new();
-        let mut all_recipients: HashSet<Rc<Participant>> = HashSet::new();
+        let all_senders: HashSet<_> = assignments.iter().map(|assignment| Rc::clone(&assignment.sender)).collect();
+        let all_recipients: HashSet<_> = assignments.iter().map(|assignment| Rc::clone(&assignment.recipient)).collect();
 
-        for assignment in assignments.iter() {
-            all_senders.insert(Rc::clone(&assignment.sender));
-            all_recipients.insert(Rc::clone(&assignment.recipient));
-        }
-         
         // Make sure every participant appears as a sender once and as a recipient once
         if all_senders.len() != participants.len() {
             return Err(format!("Invalid permutation: number of unique sender IDs ({}) does not match number of participants ({})", all_senders.len(), participants.len()));
@@ -141,8 +136,6 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
     // Read the CSV file at the given path and return the Configuration (participants and exclusion constraints)
 
     let mut participants_by_name: HashMap<String, Rc<Participant>> = HashMap::new();
-    let mut cannot_send_to: HashMap<Rc<Participant>, HashSet<Rc<Participant>>> = HashMap::new();
-    let mut cannot_receive_from: HashMap<Rc<Participant>, HashSet<Rc<Participant>>> = HashMap::new();
 
     let mut csv_reader = csv::Reader::from_path(file_path).unwrap();
 
@@ -168,6 +161,8 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
     }
 
     let mut csv_reader = csv::Reader::from_path(file_path).unwrap();
+    let mut cannot_send_to: HashMap<Rc<Participant>, HashSet<Rc<Participant>>> = HashMap::new();
+    let mut cannot_receive_from: HashMap<Rc<Participant>, HashSet<Rc<Participant>>> = HashMap::new();
 
     // Iterate over the records again, adding entries to the exclusion maps
     for result in csv_reader.records() {
@@ -176,33 +171,31 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
         let sender_exclusion_entry = record[3].to_string();
         let recipient_exclusion_entry = record[4].to_string();
 
-        let sender_exclusion_name_list: Vec<&str> = sender_exclusion_entry.split(",").map(|s| s.trim()).collect();
-        let recipient_exclusion_name_list: Vec<&str> = recipient_exclusion_entry.split(",").map(|s| s.trim()).collect();
-
+        let sender_exclusion_names = sender_exclusion_entry
+            .split(",")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let recipient_exclusion_names = recipient_exclusion_entry
+            .split(",")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        
         let mut sender_exclusion_reference_list: Vec<Rc<Participant>> = Vec::new();
         let mut recipient_exclusion_reference_list: Vec<Rc<Participant>> = Vec::new();
 
-        for sender_exclusion_name in sender_exclusion_name_list {
-            if sender_exclusion_name == "" {
-                continue;
-            }
-
+        for sender_exclusion_name in sender_exclusion_names {
             match participants_by_name.get(sender_exclusion_name) {
                 Some(participant) => sender_exclusion_reference_list.push(participant.clone()),
                 // There might not be a participant with this name (as not everybody might have signed up)
-                None => println!("Warning: participant with name {} not found", sender_exclusion_name)
+                None => eprintln!("Warning: participant with name {} not found", sender_exclusion_name)
             }
         }
 
-        for recipient_exclusion_name in recipient_exclusion_name_list {
-            if recipient_exclusion_name == "" {
-                continue;
-            }
-
+        for recipient_exclusion_name in recipient_exclusion_names {
             match participants_by_name.get(recipient_exclusion_name) {
                 Some(participant) => recipient_exclusion_reference_list.push(participant.clone()),
                 // There might not be a participant with this name (as not everybody might have signed up)
-                None => println!("Warning: participant with name {} not found", recipient_exclusion_name)
+                None => eprintln!("Warning: participant with name {} not found", recipient_exclusion_name)
             }
         }
 
@@ -256,11 +249,11 @@ fn generate_valid_permutation(configuration: Configuration, do_be_verbose: bool)
 
     loop {
         loop_count += 1;
-        if do_be_verbose { println!("Trying permutation #{}:", loop_count) };
+        if do_be_verbose { eprintln!("Trying permutation #{}:", loop_count) };
 
         match gen_iter(&mut rng, &configuration) {
             Err(message) => {
-                if do_be_verbose { println!("{}", message) }
+                if do_be_verbose { eprintln!("{}", message) }
             },
             Ok(permutation) => return permutation,
         }
@@ -271,13 +264,13 @@ fn write_matching_files(permutation: Permutation, output_directory: &str) -> Str
 
     // Create matchings directory if necessary
     if let Err(_) = fs::create_dir(output_directory) {
-        println!("Failed to create output directory {}, assuming it already exists.", output_directory);
+        eprintln!("Failed to create output directory {}, assuming it already exists.", output_directory);
     }
 
     // Create subfolder with timestamp
     let output_directory = format!("{}/{}", output_directory, chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"));
     if let Err(_) = fs::create_dir(output_directory.clone()) {
-        println!("Failed to create output directory {}, assuming it already exists.", output_directory);
+        eprintln!("Failed to create output directory {}, assuming it already exists.", output_directory);
     }
 
     for assignment in permutation.assignments.iter() {
@@ -300,21 +293,21 @@ fn main() {
 
     let start_time = std::time::Instant::now();
 
-    println!("Loading configuration...");
+    eprintln!("Loading configuration...");
     let configuration = read_configuration_from_csv(&arguments.input_file_path);
 
-    println!("Loaded participants:");
+    eprintln!("Loaded participants:");
     for participant in configuration.participants.iter() {
-        println!("{:?}", participant.name);
+        eprintln!("{:?}", participant.name);
     }
 
-    println!("Generating valid permutation...");
+    eprintln!("Generating valid permutation...");
     let permutation = generate_valid_permutation(configuration, arguments.do_be_verbose);
 
-    println!("Writing matching files...");
+    eprintln!("Writing matching files...");
     let output_directory = write_matching_files(permutation, &arguments.output_directory_path);
-    println!("Done! Wrote matchings to {}.", output_directory);
+    eprintln!("Done! Wrote matchings to {}.", output_directory);
 
     let duration = start_time.elapsed();
-    println!("Time elapsed: {:?}", duration);
+    eprintln!("Time elapsed: {:?}", duration);
 }
