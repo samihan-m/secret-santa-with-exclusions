@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::hash::Hash;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Assignment<T> {
