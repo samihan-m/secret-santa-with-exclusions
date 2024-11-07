@@ -7,8 +7,7 @@ use crate::permutation::Permutation;
 
 #[derive(Debug)]
 pub struct Participant {
-    // Assuming first name is unique because each person has a unique option in the Google Form
-    // Will use this value like an ID for the participant
+    pub id: usize,
     pub name: String,
     pub discord_handle: String,
     pub mailing_info: String,

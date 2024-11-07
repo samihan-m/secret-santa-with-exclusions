@@ -11,6 +11,7 @@ use clap::Parser;
 
 mod configuration;
 mod permutation;
+mod matching;
 
 use crate::configuration::{Configuration, Participant};
 use crate::permutation::{Permutation, Assignment};
@@ -64,8 +65,9 @@ where
     Ok(buf.split(", ").map(|s| s.to_string()).collect())
 }
 
-fn participant_from_submission(submission: &FormSubmission) -> Participant {
+fn participant_from_submission(submission: &FormSubmission, id: usize) -> Participant {
     Participant {
+        id,
         name: submission.name.clone(),
         discord_handle: submission.discord_handle.clone(),
         mailing_info: submission.mailing_info.clone(),
@@ -90,10 +92,11 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
 
     let participant_map: HashMap<ParticipantName, Rc<Participant>> = submissions
         .iter()
-        .map(|submission| {
+        .enumerate()
+        .map(|(id, submission)| {
             (
                 submission.name.clone(),
-                Rc::new(participant_from_submission(submission)),
+                Rc::new(participant_from_submission(submission, id)),
             )
         })
         .collect();
