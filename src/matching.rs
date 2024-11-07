@@ -59,7 +59,7 @@ fn remove_exclusion_edges(
     digraph
 }
 
-fn create_bipartite_graph(digraph: DiGraph<usize, ()>) -> DiGraph<usize, ()> {
+fn create_bipartite_graph(digraph: &DiGraph<usize, ()>) -> DiGraph<usize, ()> {
     let mut bipartite_graph = DiGraph::<usize, ()>::with_capacity(digraph.node_count() * 2, digraph.edge_count());
 
     (0..=1).for_each(|_| {
@@ -81,6 +81,38 @@ fn create_bipartite_graph(digraph: DiGraph<usize, ()>) -> DiGraph<usize, ()> {
 
     bipartite_graph
 }
+
+fn create_flow_network(bipartite_graph: &DiGraph<usize, ()>) -> DiGraph<usize, u8> {
+    let mut flow_network = DiGraph::<usize, u8>::with_capacity(bipartite_graph.node_count() + 2, bipartite_graph.edge_count() + bipartite_graph.node_count());
+
+    bipartite_graph.node_indices()
+        .map(|node_index| bipartite_graph[node_index])
+        .for_each(|participant_id| {
+            flow_network.add_node(participant_id);
+        });
+
+    let new_edges = bipartite_graph.raw_edges().iter().map(|edge| {
+        let source = edge.source().index();
+        let target = edge.target().index();
+        (source as u32, target as u32, 1)
+    });
+
+    flow_network.extend_with_edges(new_edges);
+
+    let source = flow_network.add_node(usize::MAX);
+    let sink = flow_network.add_node(usize::MAX);
+
+    bipartite_graph.node_indices().for_each(|node_index| {
+        if node_index.index() < bipartite_graph.node_count() / 2 {
+            flow_network.add_edge(source, node_index, 1);
+        } else {
+            flow_network.add_edge(node_index, sink, 1);
+        }
+    });
+
+    flow_network
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -169,7 +201,7 @@ mod tests {
     #[test]
     fn test_create_bipartite_graph() {
         let mut digraph = create_complete_digraph(get_test_participants());
-        digraph = create_bipartite_graph(digraph);
+        digraph = create_bipartite_graph(&digraph);
 
         assert_eq!(digraph.node_count(), 6);
         assert_eq!(digraph.edge_count(), 6);
@@ -188,4 +220,34 @@ mod tests {
             // No other edges should exist
         ]));
     }
+
+    #[test]
+    fn test_create_flow_network() {
+        let digraph = create_complete_digraph(get_test_participants());
+        let digraph = create_bipartite_graph(&digraph);
+        let flow_network = create_flow_network(&digraph);
+
+        assert_eq!(flow_network.node_count(), 8);
+        assert_eq!(flow_network.edge_count(), 12);
+
+        let edges = HashSet::<(usize, usize, u8)>::from_iter(flow_network.raw_edges().iter().map(|edge| {
+            (edge.source().index(), edge.target().index(), 1)
+        }));
+
+        assert_eq!(edges, HashSet::from_iter(vec![
+            (0, 4, 1), // L1 should point to R2,
+            (0, 5, 1), // L1 should point to R3
+            (1, 3, 1), // L2 should point to R1
+            (1, 5, 1), // L2 should point to R3
+            (2, 3, 1), // L3 should point to R1
+            (2, 4, 1), // L3 should point to R2,
+            (6, 0, 1), // source should point to L1
+            (6, 1, 1), // source should point to L2
+            (6, 2, 1), // source should point to L3
+            (3, 7, 1), // R1 should point to sink
+            (4, 7, 1), // R2 should point to sink
+            (5, 7, 1), // R3 should point to sink
+        ]));
+    }
+
 }
