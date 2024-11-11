@@ -16,237 +16,121 @@ but otherwise, the perfect matching corresponds to a cycle cover in G.
 
 use std::{collections::{HashMap, HashSet}, rc::Rc};
 
-use petgraph::graph::DiGraph;
+use petgraph::graph::{NodeIndex, UnGraph};
 
 use crate::configuration::Participant;
 
-fn create_complete_digraph(participants: HashSet<Rc<Participant>>) -> DiGraph<usize, ()> {
-    let participant_count = participants.len();
-    let mut digraph = DiGraph::<usize, ()>::with_capacity(participant_count, participant_count * (participant_count - 1));
+fn construct_flow_network(
+    participants: HashSet<Rc<Participant>>,
+    cannot_send_to: HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
+    cannot_receive_from: HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
+) -> UnGraph<String, u8> {
+    // maps a person to the index of their sending and receiving node
+    let mut node_owners: HashMap<Rc<Participant>, (NodeIndex, NodeIndex)> = HashMap::new();
+    let mut flow_graph = UnGraph::<String, u8>::new_undirected();
 
-    let node_indices = participants.iter().map(|participant| digraph.add_node(participant.id)).collect::<Vec<_>>();
+    let source = flow_graph.add_node("flow_source".to_string());
+    let sink = flow_graph.add_node("flow_sink".to_string());
 
-    node_indices.iter().for_each(|sender| {
-        node_indices.iter().for_each(|recipient| {
-            if sender != recipient {
-                digraph.add_edge(*sender, *recipient, ());
-            }
-        });
-    });
-
-    digraph
-}
-
-fn remove_exclusion_edges(
-    // A complete digraph
-    mut digraph: DiGraph<usize, ()>,
-    cannot_send_to: HashMap<usize, HashSet<usize>>,
-    cannot_receive_from: HashMap<usize, HashSet<usize>>,
-) -> DiGraph<usize, ()> {
-    digraph.node_indices().for_each(|sender_node_index| {
-        let sender_id = digraph[sender_node_index];
-        digraph.node_indices().for_each(|recipient_node_index| {
-            let recipient_id = digraph[recipient_node_index];
-            if cannot_send_to[&sender_id].contains(&recipient_id) {
-                digraph.remove_edge(digraph.find_edge(sender_node_index, recipient_node_index).unwrap());
-            }
-            if cannot_receive_from[&recipient_id].contains(&sender_id) {
-                digraph.remove_edge(digraph.find_edge(sender_node_index, recipient_node_index).unwrap());
-            }
-        });
-    });
-
-    digraph
-}
-
-fn create_bipartite_graph(digraph: &DiGraph<usize, ()>) -> DiGraph<usize, ()> {
-    let mut bipartite_graph = DiGraph::<usize, ()>::with_capacity(digraph.node_count() * 2, digraph.edge_count());
-
-    (0..=1).for_each(|_| {
-        digraph.node_indices()
-            .map(|node_index| digraph[node_index])
-            .for_each(|participant_id| {
-                bipartite_graph.add_node(participant_id);
-            });
-    });
-
-    let node_count = digraph.node_count();
-    let new_edges = digraph.raw_edges().iter().map(|edge| {
-        let source = edge.source().index();
-        let target = edge.target().index() + node_count;
-        (source as u32, target as u32)
-    });
-
-    bipartite_graph.extend_with_edges(new_edges);
-
-    bipartite_graph
-}
-
-fn create_flow_network(bipartite_graph: &DiGraph<usize, ()>) -> DiGraph<usize, u8> {
-    let mut flow_network = DiGraph::<usize, u8>::with_capacity(bipartite_graph.node_count() + 2, bipartite_graph.edge_count() + bipartite_graph.node_count());
-
-    bipartite_graph.node_indices()
-        .map(|node_index| bipartite_graph[node_index])
-        .for_each(|participant_id| {
-            flow_network.add_node(participant_id);
-        });
-
-    let new_edges = bipartite_graph.raw_edges().iter().map(|edge| {
-        let source = edge.source().index();
-        let target = edge.target().index();
-        (source as u32, target as u32, 1)
-    });
-
-    flow_network.extend_with_edges(new_edges);
-
-    let source = flow_network.add_node(usize::MAX);
-    let sink = flow_network.add_node(usize::MAX);
-
-    bipartite_graph.node_indices().for_each(|node_index| {
-        if node_index.index() < bipartite_graph.node_count() / 2 {
-            flow_network.add_edge(source, node_index, 1);
-        } else {
-            flow_network.add_edge(node_index, sink, 1);
+    for p in &participants {
+        let p_s = flow_graph.add_node(format!("{}_send", p.name));
+        let p_r = flow_graph.add_node(format!("{}_receive", p.name));
+        flow_graph.add_edge(source, p_s, 1);
+        flow_graph.add_edge(p_r, sink, 1);
+        node_owners.insert(p.clone(), (p_s, p_r));
+    }
+    
+    for sender in &participants {
+        for receiver in &participants {
+            if sender == receiver { continue; }
+            if cannot_send_to[receiver].contains(sender) { continue; }
+            if cannot_receive_from[sender].contains(receiver) { continue; }
+            flow_graph.add_edge(node_owners[sender].0, node_owners[receiver].1, 1);
         }
-    });
+    }
 
-    flow_network
+    flow_graph
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn get_test_participants() -> HashSet<Rc<Participant>> {
-        let mut participants = HashSet::<Rc<Participant>>::new();
-        
-        participants.insert(Rc::new(Participant {
+    
+    #[test]
+    fn test_construct_flow_network() {
+        let p1 = Rc::new(Participant {
             id: 1,
             name: "Alice".to_string(),
             discord_handle: "alice#1234".to_string(),
             mailing_info: "1234 Alice Lane".to_string(),
             interests: "Programming, cats".to_string(),
-        }));
-        participants.insert(Rc::new(Participant {
+        });
+        let p2 = Rc::new(Participant {
             id: 2,
             name: "Bob".to_string(),
             discord_handle: "bob#5678".to_string(),
             mailing_info: "5678 Bob Lane".to_string(),
             interests: "Programming, dogs".to_string(),
-        }));
-        participants.insert(Rc::new(Participant {
+        });
+        let p3 = Rc::new(Participant {
             id: 3,
             name: "Charlie".to_string(),
             discord_handle: "charlie#9101".to_string(),
             mailing_info: "9101 Charlie Lane".to_string(),
             interests: "Programming, birds".to_string(),
-        }));
+        });
 
-        participants
-    }
+        let participants = HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
 
-    #[test]
-    fn test_create_complete_digraph() {
-        let digraph = create_complete_digraph(get_test_participants());
-
-        assert_eq!(digraph.node_count(), 3);
-        assert_eq!(digraph.edge_count(), 6);
-    }
-
-    #[test]
-    fn test_remove_no_exclusion_edges() {
-        let mut cannot_send_to = HashMap::<usize, HashSet<usize>>::new();
-        cannot_send_to.insert(1, HashSet::new());
-        cannot_send_to.insert(2, HashSet::new());
-        cannot_send_to.insert(3, HashSet::new());
-
-        let mut cannot_receive_from = HashMap::<usize, HashSet<usize>>::new();
-        cannot_receive_from.insert(1, HashSet::new());
-        cannot_receive_from.insert(2, HashSet::new());
-        cannot_receive_from.insert(3, HashSet::new());
-
-        let mut digraph = create_complete_digraph(get_test_participants());
-        digraph = remove_exclusion_edges(digraph, cannot_send_to, cannot_receive_from);
-
-        assert_eq!(digraph.edge_count(), 6);
-    }
-
-    #[test]
-    fn test_remove_exclusion_edges() {
-        let mut cannot_send_to = HashMap::<usize, HashSet<usize>>::new();
-        cannot_send_to.insert(1, {
+        let mut cannot_send_to = HashMap::<Rc<Participant>, HashSet<Rc<Participant>>>::new();
+        cannot_send_to.insert(p1.clone(), {
             let mut set = HashSet::new();
-            set.insert(2);
+            set.insert(p2.clone());
             set
         });
-        cannot_send_to.insert(2, HashSet::new());
-        cannot_send_to.insert(3, HashSet::new());
+        cannot_send_to.insert(p2.clone(), HashSet::new());
+        cannot_send_to.insert(p3.clone(), HashSet::new());
 
-        let mut cannot_receive_from = HashMap::<usize, HashSet<usize>>::new();
-        cannot_receive_from.insert(1, HashSet::new());
-        cannot_receive_from.insert(2, HashSet::new());
-        cannot_receive_from.insert(3, {
+        let mut cannot_receive_from = HashMap::<Rc<Participant>, HashSet<Rc<Participant>>>::new();
+        cannot_receive_from.insert(p1.clone(), HashSet::new());
+        cannot_receive_from.insert(p2.clone(), HashSet::new());
+        cannot_receive_from.insert(p3.clone(), {
             let mut set = HashSet::new();
-            set.insert(2);
+            set.insert(p2.clone());
             set
         });
 
-        let mut digraph = create_complete_digraph(get_test_participants());
-        digraph = remove_exclusion_edges(digraph, cannot_send_to, cannot_receive_from);
+        let flow_network = construct_flow_network(participants, cannot_send_to, cannot_receive_from);
 
-        assert_eq!(digraph.edge_count(), 4);
-    }
-
-    #[test]
-    fn test_create_bipartite_graph() {
-        let mut digraph = create_complete_digraph(get_test_participants());
-        digraph = create_bipartite_graph(&digraph);
-
-        assert_eq!(digraph.node_count(), 6);
-        assert_eq!(digraph.edge_count(), 6);
-
-        let edges = HashSet::<(usize, usize)>::from_iter(digraph.raw_edges().iter().map(|edge| {
-            (edge.source().index(), edge.target().index())
-        }));
-        
-        assert_eq!(edges, HashSet::from_iter(vec![
-            (0, 4), // L1 should point to R2,
-            (0, 5), // L1 should point to R3
-            (1, 3), // L2 should point to R1
-            (1, 5), // L2 should point to R3
-            (2, 3), // L3 should point to R1
-            (2, 4), // L3 should point to R2
-            // No other edges should exist
-        ]));
-    }
-
-    #[test]
-    fn test_create_flow_network() {
-        let digraph = create_complete_digraph(get_test_participants());
-        let digraph = create_bipartite_graph(&digraph);
-        let flow_network = create_flow_network(&digraph);
-
+        // Each participant gets 1 sender node and 1 receiver node
+        // +1 source node and +1 sink node makes 3*2 + 2 = 8 nodes
         assert_eq!(flow_network.node_count(), 8);
-        assert_eq!(flow_network.edge_count(), 12);
 
         let edges = HashSet::<(usize, usize, u8)>::from_iter(flow_network.raw_edges().iter().map(|edge| {
             (edge.source().index(), edge.target().index(), 1)
         }));
 
+        // Included within this test is some implementation detail knowledge about the names of the nodes in the flow network.
+        // This feels a little bad, so if there's a way to change this nicely, look into that.
+        let source_node_index = flow_network.node_indices().find(|&node| flow_network[node] == "flow_source").unwrap().index();
+        let sink_node_index = flow_network.node_indices().find(|&node| flow_network[node] == "flow_sink").unwrap().index();
+        let p1_send_index = flow_network.node_indices().find(|&node| flow_network[node] == "Alice_send").unwrap().index();
+        let p1_receive_index = flow_network.node_indices().find(|&node| flow_network[node] == "Alice_receive").unwrap().index();
+        let p2_send_index = flow_network.node_indices().find(|&node| flow_network[node] == "Bob_send").unwrap().index();
+        let p2_receive_index = flow_network.node_indices().find(|&node| flow_network[node] == "Bob_receive").unwrap().index();
+        let p3_send_index = flow_network.node_indices().find(|&node| flow_network[node] == "Charlie_send").unwrap().index();
+        let p3_receive_index = flow_network.node_indices().find(|&node| flow_network[node] == "Charlie_receive").unwrap().index();
         assert_eq!(edges, HashSet::from_iter(vec![
-            (0, 4, 1), // L1 should point to R2,
-            (0, 5, 1), // L1 should point to R3
-            (1, 3, 1), // L2 should point to R1
-            (1, 5, 1), // L2 should point to R3
-            (2, 3, 1), // L3 should point to R1
-            (2, 4, 1), // L3 should point to R2,
-            (6, 0, 1), // source should point to L1
-            (6, 1, 1), // source should point to L2
-            (6, 2, 1), // source should point to L3
-            (3, 7, 1), // R1 should point to sink
-            (4, 7, 1), // R2 should point to sink
-            (5, 7, 1), // R3 should point to sink
+            (source_node_index, p1_send_index, 1),
+            (source_node_index, p2_send_index, 1),
+            (source_node_index, p3_send_index, 1),
+            (p1_receive_index, sink_node_index, 1),
+            (p2_receive_index, sink_node_index, 1),
+            (p3_receive_index, sink_node_index, 1),
+            (p1_send_index, p2_receive_index, 1),
+            (p1_send_index, p3_receive_index, 1),
+            (p2_send_index, p3_receive_index, 1),
+            (p3_send_index, p1_receive_index, 1),
         ]));
     }
 
