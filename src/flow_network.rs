@@ -22,11 +22,12 @@ use std::{
 };
 
 use petgraph::{
+    dot::Dot,
     graph::{DiGraph, NodeIndex},
     visit::EdgeRef,
 };
 
-use crate::{configuration::Participant, permutation::Assignment};
+use crate::{configuration::Participant, permutation::Assignment, rng_ford_fulkerson};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum NodeLabel {
@@ -98,9 +99,10 @@ pub fn construct_flow_network(
 pub fn get_matchings(
     participants: &HashSet<Rc<Participant>>,
     flow_network: FlowNetwork<NodeLabel, usize>,
+    be_verbose: bool,
 ) -> Result<HashSet<Assignment<Rc<Participant>>>, HashSet<NodeLabel>> {
     let (flow, edge_capacities) =
-        petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
+        rng_ford_fulkerson::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
     // there is at least one participant who is not receiving a gift (a matching is impossible)
@@ -125,6 +127,26 @@ pub fn get_matchings(
 
     let mut assignments = HashSet::new();
 
+    if be_verbose {
+        let edges_with_flow = zip(
+            edge_capacities.iter(),
+            flow_network.graph.raw_edges().iter(),
+        )
+        .filter(|(capacity, _)| **capacity > 0)
+        .map(|(capacity, edge)| (edge.source(), edge.target(), *capacity));
+        let mut post_network = DiGraph::<NodeLabel, usize>::new();
+        for node in flow_network.graph.node_indices() {
+            post_network.add_node(flow_network.graph[node].clone());
+        }
+        for (source, target, weight) in edges_with_flow {
+            post_network.add_edge(source, target, weight);
+        }
+
+        eprintln!("Here is a graphviz .dot format representation for the flow network after finding matchings.");
+        eprintln!("Copy-paste it into something like https://viz-js.com/ to visualize it:");
+        eprintln!("{}", Dot::new(&post_network));
+    }
+
     for (edge_capacity, edge) in zip(
         edge_capacities.iter(),
         flow_network.graph.raw_edges().iter(),
@@ -132,9 +154,9 @@ pub fn get_matchings(
         if *edge_capacity == 0 {
             continue;
         }
-        let sender = &flow_network.graph[edge.source()];
-        let receiver = &flow_network.graph[edge.target()];
-        if let (NodeLabel::Sender(sender), NodeLabel::Receiver(receiver)) = (sender, receiver) {
+        let source = &flow_network.graph[edge.source()];
+        let target = &flow_network.graph[edge.target()];
+        if let (NodeLabel::Sender(sender), NodeLabel::Receiver(receiver)) = (source, target) {
             assignments.insert(Assignment {
                 sender: sender.clone(),
                 recipient: receiver.clone(),
@@ -299,7 +321,7 @@ mod tests {
 
         let flow_network =
             construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
-        let assignments = get_matchings(&participants, flow_network).unwrap();
+        let assignments = get_matchings(&participants, flow_network, false).unwrap();
 
         assert_eq!(assignments.len(), participants.len());
 
@@ -334,7 +356,7 @@ mod tests {
 
         let flow_network =
             construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
-        let problematic_nodes = get_matchings(&participants, flow_network).unwrap_err();
+        let problematic_nodes = get_matchings(&participants, flow_network, false).unwrap_err();
 
         assert!(problematic_nodes.len() == 1);
     }

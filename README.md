@@ -19,7 +19,7 @@ Options:
   -i, --input-file-path <INPUT_FILE_PATH>              Input file path [default: ./input_data.csv]
   -o, --output-directory-path <OUTPUT_DIRECTORY_PATH>  Output directory path [default: ./matchings]
   -m, --matching-method <MATCHING_METHOD>              Matching method. "flow-network" is recommended, as it will terminate if a valid assignment cannot be found, unlike "permutation" [default: flow-network] [possible values: permutation, flow-network]
-  -v, --verbose                                        Verbose flag. Has no effect when using the flow-network matching method
+  -v, --verbose                                        Verbose flag.
   -h, --help                                           Print help
 ```
 

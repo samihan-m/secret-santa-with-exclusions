@@ -12,6 +12,7 @@ use clap::{Parser, ValueEnum};
 mod configuration;
 mod flow_network;
 mod permutation;
+mod rng_ford_fulkerson;
 
 use crate::configuration::{Configuration, Participant};
 use crate::permutation::{Assignment, Permutation};
@@ -36,7 +37,7 @@ struct Args {
     #[arg(short, long, value_enum, default_value_t = MatchingMethod::FlowNetwork)]
     matching_method: MatchingMethod,
 
-    /// Verbose flag. Has no effect when using the flow-network matching method.
+    /// Verbose flag.
     #[arg(short = 'v', long = "verbose", default_value = "false")]
     do_be_verbose: bool,
 }
@@ -201,6 +202,7 @@ fn generate_valid_permutation(
 
 fn try_generate_assignments_via_flow_network(
     configuration: Configuration,
+    be_verbose: bool,
 ) -> Result<HashSet<Assignment<Rc<Participant>>>, String> {
     let flow_network = flow_network::construct_flow_network(
         &configuration.participants,
@@ -208,7 +210,7 @@ fn try_generate_assignments_via_flow_network(
         &configuration.cannot_receive_from,
     );
 
-    flow_network::get_matchings(&configuration.participants, flow_network).map_err(
+    flow_network::get_matchings(&configuration.participants, flow_network, be_verbose).map_err(
         |problematic_nodes| {
             format!(
                 "Failed to find a valid assignment: {}",
@@ -301,7 +303,8 @@ fn main() {
         }
         MatchingMethod::FlowNetwork => {
             eprintln!("Generating assignments via flow network...");
-            match try_generate_assignments_via_flow_network(configuration) {
+            match try_generate_assignments_via_flow_network(configuration, arguments.do_be_verbose)
+            {
                 Ok(assignments) => assignments,
                 Err(message) => {
                     eprintln!("{}", message);
