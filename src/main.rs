@@ -10,7 +10,7 @@ use std::rc::Rc;
 use clap::{Parser, ValueEnum};
 
 mod configuration;
-mod matching;
+mod flow_network;
 mod permutation;
 
 use crate::configuration::{Configuration, Participant};
@@ -202,13 +202,13 @@ fn generate_valid_permutation(
 fn try_generate_assignments_via_flow_network(
     configuration: Configuration,
 ) -> Result<HashSet<Assignment<Rc<Participant>>>, String> {
-    let flow_network = matching::construct_flow_network(
+    let flow_network = flow_network::construct_flow_network(
         &configuration.participants,
         &configuration.cannot_send_to,
         &configuration.cannot_receive_from,
     );
 
-    matching::get_matchings(&configuration.participants, flow_network).map_err(
+    flow_network::get_matchings(&configuration.participants, flow_network).map_err(
         |problematic_nodes| {
             format!(
                 "Failed to find a valid assignment: {}",
@@ -216,10 +216,10 @@ fn try_generate_assignments_via_flow_network(
                     .into_iter()
                     .filter_map(|p| {
                         match p {
-                            matching::NodeLabel::Sender(p) => {
+                            flow_network::NodeLabel::Sender(p) => {
                                 Some(format!("{} is unable to send to anyone", p.name))
                             }
-                            matching::NodeLabel::Receiver(p) => {
+                            flow_network::NodeLabel::Receiver(p) => {
                                 Some(format!("{} is unable to receive from anyone", p.name))
                             }
                             _ => None,
