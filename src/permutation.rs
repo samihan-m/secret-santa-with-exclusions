@@ -1,12 +1,11 @@
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::hash::Hash;
 use std::fmt::Debug;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Assignment<T> {
-    pub sender: Rc<T>,
-    pub recipient: Rc<T>,
+    pub sender: T,
+    pub recipient: T,
 }
 
 pub struct Permutation<T> {
@@ -15,11 +14,11 @@ pub struct Permutation<T> {
 
 impl<T> Permutation<T>
 where
-    T: Eq + Hash
+    T: Eq + Hash + Clone
 {
     pub fn try_new(
         assignments: HashSet<Assignment<T>>,
-        participants: &HashSet<Rc<T>>,
+        participants: &HashSet<T>,
     ) -> Result<Permutation<T>, String> {
         // Smart constructor to check it is actually a permutation
 
@@ -30,11 +29,11 @@ where
 
         let all_senders: HashSet<_> = assignments
             .iter()
-            .map(|assignment| Rc::clone(&assignment.sender))
+            .map(|assignment| assignment.sender.clone())
             .collect();
         let all_recipients: HashSet<_> = assignments
             .iter()
-            .map(|assignment| Rc::clone(&assignment.recipient))
+            .map(|assignment| assignment.recipient.clone())
             .collect();
 
         // Make sure every participant appears as a sender once and as a recipient once
@@ -48,7 +47,7 @@ where
         Ok(Permutation { assignments })
     }
 
-    pub fn ensure_is_derangement(&self) -> Result<(), Rc<T>> {
+    pub fn ensure_is_derangement(&self) -> Result<(), T> {
         // Test the permutation to see if it is a derangement of the participants
         // A derangement is a permutation of elements in a set in which no element appears in it's original position
 

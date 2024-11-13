@@ -143,7 +143,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
 fn generate_valid_permutation(
     configuration: Configuration,
     do_be_verbose: bool,
-) -> Permutation<Participant> {
+) -> Permutation<Rc<Participant>> {
     // Repeatedly try different derangements until we find one that satisfies the exclusion constraints
 
     // We have an n x n matrix (where n is the number of participants)
@@ -157,7 +157,7 @@ fn generate_valid_permutation(
     fn gen_iter(
         rng: &mut ThreadRng,
         configuration: &Configuration,
-    ) -> Result<Permutation<Participant>, String> {
+    ) -> Result<Permutation<Rc<Participant>>, String> {
         let participants_randomized = {
             let mut participants: Vec<&Rc<Participant>> =
                 Vec::from_iter(configuration.participants.iter());
@@ -166,8 +166,8 @@ fn generate_valid_permutation(
         };
         let random_assignments = zip(configuration.participants.iter(), participants_randomized)
             .map(|(p1, p2)| Assignment {
-                sender: Rc::clone(p1),
-                recipient: Rc::clone(p2),
+                sender: p1.clone(),
+                recipient: p2.clone(),
             })
             .collect();
 
@@ -195,7 +195,7 @@ fn generate_valid_permutation(
     }
 }
 
-fn write_matching_files(permutation: Permutation<Participant>, output_directory: &str) -> String {
+fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, output_directory: &str) -> String {
     // Create matchings directory if necessary
     if let Err(_) = fs::create_dir(output_directory) {
         eprintln!(
@@ -217,7 +217,7 @@ fn write_matching_files(permutation: Permutation<Participant>, output_directory:
         );
     }
 
-    for assignment in permutation.assignments.iter() {
+    for assignment in assignments {
         let sender = &assignment.sender;
         let recipient = &assignment.recipient;
 
@@ -261,7 +261,7 @@ fn main() {
     let permutation = generate_valid_permutation(configuration, arguments.do_be_verbose);
 
     eprintln!("Writing matching files...");
-    let output_directory = write_matching_files(permutation, &arguments.output_directory_path);
+    let output_directory = write_matching_files(permutation.assignments, &arguments.output_directory_path);
     eprintln!("Done! Wrote matchings to {}.", output_directory);
 
     let duration = start_time.elapsed();

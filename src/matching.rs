@@ -81,7 +81,7 @@ fn construct_flow_network(
     }
 }
 
-fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Option<HashSet<Assignment<Participant>>> {
+fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Option<HashSet<Assignment<Rc<Participant>>>> {
     let (flow, edge_capacities) = petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
