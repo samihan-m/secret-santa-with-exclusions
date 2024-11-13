@@ -14,18 +14,29 @@ but otherwise, the perfect matching corresponds to a cycle cover in G.
 7. Transform the cycle cover into the Secret Santa assignments
 */
 
-use std::{collections::{HashMap, HashSet}, rc::Rc, iter::zip};
+use std::{collections::{HashMap, HashSet}, fmt::Display, iter::zip, rc::Rc};
 
 use petgraph::graph::{DiGraph, NodeIndex};
 
 use crate::{configuration::Participant, permutation::Assignment};
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum NodeLabel {
     Source,
     Sink,
     Sender(Rc<Participant>),
     Receiver(Rc<Participant>),
+}
+
+impl Display for NodeLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeLabel::Source => write!(f, "Source"),
+            NodeLabel::Sink => write!(f, "Sink"),
+            NodeLabel::Sender(participant) => write!(f, "{}", participant.name),
+            NodeLabel::Receiver(participant) => write!(f, "{}", participant.name),
+        }
+    }
 }
 
 struct FlowNetwork<NodeDataType, EdgeDataType> {
