@@ -18,7 +18,8 @@ Run: `secret_santa.exe [options]`
 Options:
   -i, --input-file-path <INPUT_FILE_PATH>              Input file path [default: ./input_data.csv]
   -o, --output-directory-path <OUTPUT_DIRECTORY_PATH>  Output directory path [default: ./matchings]
-  -v, --verbose                                        Verbose flag
+  -m, --matching-method <MATCHING_METHOD>              Matching method. "flow-network" is recommended, as it will terminate if a valid assignment cannot be found, unlike "permutation" [default: permutation] [possible values: permutation, flow-network]
+  -v, --verbose                                        Verbose flag. Has no effect when using the flow-network matching method
   -h, --help                                           Print help
 ```
 
