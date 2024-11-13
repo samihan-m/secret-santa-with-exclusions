@@ -10,11 +10,11 @@ use std::rc::Rc;
 use clap::{Parser, ValueEnum};
 
 mod configuration;
-mod permutation;
 mod matching;
+mod permutation;
 
 use crate::configuration::{Configuration, Participant};
-use crate::permutation::{Permutation, Assignment};
+use crate::permutation::{Assignment, Permutation};
 
 #[derive(Clone, Debug, ValueEnum)]
 enum MatchingMethod {
@@ -89,9 +89,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
 
     fn read_submissions(file_path: &str) -> Result<Vec<FormSubmission>, csv::Error> {
         let mut csv_reader = csv::Reader::from_path(file_path)?;
-        let submissions = csv_reader
-            .deserialize()
-            .collect::<Result<Vec<_>, _>>()?;
+        let submissions = csv_reader.deserialize().collect::<Result<Vec<_>, _>>()?;
         Ok(submissions)
     }
     let submissions = read_submissions(file_path).unwrap();
@@ -137,10 +135,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
         })
         .collect();
 
-    let participants: HashSet<Rc<Participant>> = participant_map
-        .values()
-        .map(Rc::clone)
-        .collect();
+    let participants: HashSet<Rc<Participant>> = participant_map.values().map(Rc::clone).collect();
 
     Configuration {
         participants,
@@ -210,27 +205,37 @@ fn try_generate_assignments_via_flow_network(
     let flow_network = matching::construct_flow_network(
         &configuration.participants,
         &configuration.cannot_send_to,
-        &configuration.cannot_receive_from
+        &configuration.cannot_receive_from,
     );
 
-    matching::get_matchings(&configuration.participants, flow_network)
-        .map_err(|problematic_nodes| {
+    matching::get_matchings(&configuration.participants, flow_network).map_err(
+        |problematic_nodes| {
             format!(
                 "Failed to find a valid assignment: {}",
-                problematic_nodes.into_iter()
+                problematic_nodes
+                    .into_iter()
                     .filter_map(|p| {
                         match p {
-                            matching::NodeLabel::Sender(p) => Some(format!("{} is unable to send to anyone", p.name)),
-                            matching::NodeLabel::Receiver(p) => Some(format!("{} is unable to receive from anyone", p.name)),
+                            matching::NodeLabel::Sender(p) => {
+                                Some(format!("{} is unable to send to anyone", p.name))
+                            }
+                            matching::NodeLabel::Receiver(p) => {
+                                Some(format!("{} is unable to receive from anyone", p.name))
+                            }
                             _ => None,
                         }
                     })
-                    .collect::<Vec<_>>().join(", ")
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
-        })
+        },
+    )
 }
 
-fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, output_directory: &str) -> String {
+fn write_matching_files(
+    assignments: HashSet<Assignment<Rc<Participant>>>,
+    output_directory: &str,
+) -> String {
     // Create matchings directory if necessary
     if fs::create_dir(output_directory).is_err() {
         eprintln!(
@@ -268,7 +273,7 @@ fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, outpu
 
         fs::write(
             format!("{}/{}.txt", output_directory, sender.name),
-            padding_disclaimer + vertical_padding + information + closing
+            padding_disclaimer + vertical_padding + information + closing,
         )
         .unwrap();
     }

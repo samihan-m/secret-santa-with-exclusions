@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::fmt::Display;
 
 use crate::permutation::Permutation;
 
@@ -41,7 +41,10 @@ pub struct Configuration {
 }
 
 impl Configuration {
-    pub fn ensure_exclusions_satisfied(&self, permutation: &Permutation<Rc<Participant>>) -> Result<(), String> {
+    pub fn ensure_exclusions_satisfied(
+        &self,
+        permutation: &Permutation<Rc<Participant>>,
+    ) -> Result<(), String> {
         for assignment in permutation.assignments.iter() {
             // Make sure nobody is sending a present to somebody they excluded
             if self.cannot_send_to[&assignment.recipient].contains(&assignment.sender) {
@@ -62,8 +65,12 @@ impl Configuration {
         Ok(())
     }
 
-    pub fn ensure_valid_permutation(&self, permutation: &Permutation<Rc<Participant>>) -> Result<(), String> {
-        permutation.ensure_is_derangement()
+    pub fn ensure_valid_permutation(
+        &self,
+        permutation: &Permutation<Rc<Participant>>,
+    ) -> Result<(), String> {
+        permutation
+            .ensure_is_derangement()
             .map_err(|bad_sender| format!("Participant {} maps to themselves", bad_sender))?;
         self.ensure_exclusions_satisfied(permutation)?;
         Ok(())

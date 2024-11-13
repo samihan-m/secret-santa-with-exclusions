@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::hash::Hash;
 use std::fmt::Debug;
+use std::hash::Hash;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Assignment<T> {
@@ -14,7 +14,7 @@ pub struct Permutation<T> {
 
 impl<T> Permutation<T>
 where
-    T: Eq + Hash + Clone
+    T: Eq + Hash + Clone,
 {
     pub fn try_new(
         assignments: HashSet<Assignment<T>>,

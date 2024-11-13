@@ -14,9 +14,17 @@ but otherwise, the perfect matching corresponds to a cycle cover in G.
 7. Transform the cycle cover into the Secret Santa assignments
 */
 
-use std::{collections::{HashMap, HashSet}, fmt::Display, iter::zip, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    iter::zip,
+    rc::Rc,
+};
 
-use petgraph::{graph::{DiGraph, NodeIndex}, visit::EdgeRef};
+use petgraph::{
+    graph::{DiGraph, NodeIndex},
+    visit::EdgeRef,
+};
 
 use crate::{configuration::Participant, permutation::Assignment};
 
@@ -64,12 +72,18 @@ pub fn construct_flow_network(
         flow_graph.add_edge(p_r, sink, 1);
         node_owners.insert(p.clone(), (p_s, p_r));
     }
-    
+
     for sender in participants {
         for receiver in participants {
-            if sender == receiver { continue; }
-            if cannot_send_to[receiver].contains(sender) { continue; }
-            if cannot_receive_from[sender].contains(receiver) { continue; }
+            if sender == receiver {
+                continue;
+            }
+            if cannot_send_to[receiver].contains(sender) {
+                continue;
+            }
+            if cannot_receive_from[sender].contains(receiver) {
+                continue;
+            }
             flow_graph.add_edge(node_owners[sender].0, node_owners[receiver].1, 1);
         }
     }
@@ -81,8 +95,12 @@ pub fn construct_flow_network(
     }
 }
 
-pub fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Result<HashSet<Assignment<Rc<Participant>>>, HashSet<NodeLabel>> {
-    let (flow, edge_capacities) = petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
+pub fn get_matchings(
+    participants: &HashSet<Rc<Participant>>,
+    flow_network: FlowNetwork<NodeLabel, usize>,
+) -> Result<HashSet<Assignment<Rc<Participant>>>, HashSet<NodeLabel>> {
+    let (flow, edge_capacities) =
+        petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
     // there is at least one participant who is not receiving a gift (a matching is impossible)
@@ -107,8 +125,13 @@ pub fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: Flow
 
     let mut assignments = HashSet::new();
 
-    for (edge_capacity, edge) in zip(edge_capacities.iter(), flow_network.graph.raw_edges().iter()) {
-        if *edge_capacity == 0 { continue; }
+    for (edge_capacity, edge) in zip(
+        edge_capacities.iter(),
+        flow_network.graph.raw_edges().iter(),
+    ) {
+        if *edge_capacity == 0 {
+            continue;
+        }
         let sender = &flow_network.graph[edge.source()];
         let receiver = &flow_network.graph[edge.target()];
         if let (NodeLabel::Sender(sender), NodeLabel::Receiver(receiver)) = (sender, receiver) {
@@ -148,12 +171,13 @@ mod tests {
 
         (p1, p2, p3)
     }
-    
+
     #[test]
     fn test_construct_flow_network() {
-        let (p1, p2, p3) = get_test_participants(); 
+        let (p1, p2, p3) = get_test_participants();
 
-        let participants = HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
+        let participants =
+            HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
 
         let mut cannot_send_to = HashMap::<Rc<Participant>, HashSet<Rc<Participant>>>::new();
         cannot_send_to.insert(p1.clone(), {
@@ -173,46 +197,78 @@ mod tests {
             set
         });
 
-        let flow_network = construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
+        let flow_network =
+            construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
         let graph = flow_network.graph;
 
         // Each participant gets 1 sender node and 1 receiver node
         // +1 source node and +1 sink node makes 3*2 + 2 = 8 nodes
         assert_eq!(graph.node_count(), 8);
 
-        let edges = HashSet::<(usize, usize, u8)>::from_iter(graph.raw_edges().iter().map(|edge| {
-            (edge.source().index(), edge.target().index(), 1)
-        }));
+        let edges = HashSet::<(usize, usize, u8)>::from_iter(
+            graph
+                .raw_edges()
+                .iter()
+                .map(|edge| (edge.source().index(), edge.target().index(), 1)),
+        );
 
         // Included within this test is some implementation detail knowledge about the names of the nodes in the flow network.
         // This feels a little bad, so if there's a way to change this nicely, look into that.
         let source_node_index = flow_network.source.index();
         let sink_node_index = flow_network.sink.index();
-        let p1_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p1.clone())).unwrap().index();
-        let p1_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p1.clone())).unwrap().index();
-        let p2_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p2.clone())).unwrap().index();
-        let p2_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p2.clone())).unwrap().index();
-        let p3_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p3.clone())).unwrap().index();
-        let p3_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p3.clone())).unwrap().index();
-        assert_eq!(edges, HashSet::from_iter(vec![
-            (source_node_index, p1_send_index, 1),
-            (source_node_index, p2_send_index, 1),
-            (source_node_index, p3_send_index, 1),
-            (p1_receive_index, sink_node_index, 1),
-            (p2_receive_index, sink_node_index, 1),
-            (p3_receive_index, sink_node_index, 1),
-            (p1_send_index, p2_receive_index, 1),
-            (p1_send_index, p3_receive_index, 1),
-            (p2_send_index, p3_receive_index, 1),
-            (p3_send_index, p1_receive_index, 1),
-        ]));
+        let p1_send_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Sender(p1.clone()))
+            .unwrap()
+            .index();
+        let p1_receive_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Receiver(p1.clone()))
+            .unwrap()
+            .index();
+        let p2_send_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Sender(p2.clone()))
+            .unwrap()
+            .index();
+        let p2_receive_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Receiver(p2.clone()))
+            .unwrap()
+            .index();
+        let p3_send_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Sender(p3.clone()))
+            .unwrap()
+            .index();
+        let p3_receive_index = graph
+            .node_indices()
+            .find(|&node| graph[node] == NodeLabel::Receiver(p3.clone()))
+            .unwrap()
+            .index();
+        assert_eq!(
+            edges,
+            HashSet::from_iter(vec![
+                (source_node_index, p1_send_index, 1),
+                (source_node_index, p2_send_index, 1),
+                (source_node_index, p3_send_index, 1),
+                (p1_receive_index, sink_node_index, 1),
+                (p2_receive_index, sink_node_index, 1),
+                (p3_receive_index, sink_node_index, 1),
+                (p1_send_index, p2_receive_index, 1),
+                (p1_send_index, p3_receive_index, 1),
+                (p2_send_index, p3_receive_index, 1),
+                (p3_send_index, p1_receive_index, 1),
+            ])
+        );
     }
 
     #[test]
     fn test_get_matchings() {
         let (p1, p2, p3) = get_test_participants();
 
-        let mut participants = HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
+        let mut participants =
+            HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
         let p4 = Rc::new(Participant {
             name: "David".to_string(),
             discord_handle: "david#1213".to_string(),
@@ -241,7 +297,8 @@ mod tests {
         });
         cannot_receive_from.insert(p4.clone(), HashSet::new());
 
-        let flow_network = construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
+        let flow_network =
+            construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
         let assignments = get_matchings(&participants, flow_network).unwrap();
 
         assert_eq!(assignments.len(), participants.len());
@@ -257,7 +314,8 @@ mod tests {
     fn test_get_matchings_when_impossible() {
         let (p1, p2, p3) = get_test_participants();
 
-        let participants = HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
+        let participants =
+            HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
 
         let mut cannot_send_to = HashMap::<Rc<Participant>, HashSet<Rc<Participant>>>::new();
         cannot_send_to.insert(p1.clone(), {
@@ -274,9 +332,10 @@ mod tests {
         cannot_receive_from.insert(p2.clone(), HashSet::new());
         cannot_receive_from.insert(p3.clone(), HashSet::new());
 
-        let flow_network = construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
+        let flow_network =
+            construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
         let problematic_nodes = get_matchings(&participants, flow_network).unwrap_err();
-        
+
         assert!(problematic_nodes.len() == 1);
     }
 }
