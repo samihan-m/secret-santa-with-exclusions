@@ -102,21 +102,18 @@ mod tests {
 
     fn get_test_participants() -> (Rc<Participant>, Rc<Participant>, Rc<Participant>) {
         let p1 = Rc::new(Participant {
-            id: 1,
             name: "Alice".to_string(),
             discord_handle: "alice#1234".to_string(),
             mailing_info: "1234 Alice Lane".to_string(),
             interests: "Programming, cats".to_string(),
         });
         let p2 = Rc::new(Participant {
-            id: 2,
             name: "Bob".to_string(),
             discord_handle: "bob#5678".to_string(),
             mailing_info: "5678 Bob Lane".to_string(),
             interests: "Programming, dogs".to_string(),
         });
         let p3 = Rc::new(Participant {
-            id: 3,
             name: "Charlie".to_string(),
             discord_handle: "charlie#9101".to_string(),
             mailing_info: "9101 Charlie Lane".to_string(),
@@ -191,7 +188,6 @@ mod tests {
 
         let mut participants = HashSet::<Rc<Participant>>::from_iter(vec![p1.clone(), p2.clone(), p3.clone()]);
         let p4 = Rc::new(Participant {
-            id: 4,
             name: "David".to_string(),
             discord_handle: "david#1213".to_string(),
             mailing_info: "1213 David Lane".to_string(),

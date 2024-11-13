@@ -7,7 +7,6 @@ use crate::permutation::Permutation;
 
 #[derive(Debug)]
 pub struct Participant {
-    pub id: usize,
     pub name: String,
     pub discord_handle: String,
     pub mailing_info: String,
