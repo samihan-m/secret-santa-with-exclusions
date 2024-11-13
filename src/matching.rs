@@ -20,6 +20,14 @@ use petgraph::graph::{DiGraph, NodeIndex};
 
 use crate::{configuration::Participant, permutation::Assignment};
 
+#[derive(Clone, PartialEq)]
+enum NodeLabel {
+    Source,
+    Sink,
+    Sender(Rc<Participant>),
+    Receiver(Rc<Participant>),
+}
+
 struct FlowNetwork<NodeDataType, EdgeDataType> {
     graph: DiGraph<NodeDataType, EdgeDataType>,
     source: NodeIndex,
@@ -30,17 +38,17 @@ fn construct_flow_network(
     participants: &HashSet<Rc<Participant>>,
     cannot_send_to: &HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
     cannot_receive_from: &HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
-) -> FlowNetwork<String, usize> {
+) -> FlowNetwork<NodeLabel, usize> {
     // maps a person to the index of their sending and receiving node
     let mut node_owners: HashMap<Rc<Participant>, (NodeIndex, NodeIndex)> = HashMap::new();
-    let mut flow_graph = DiGraph::<String, usize>::new();
+    let mut flow_graph = DiGraph::<NodeLabel, usize>::new();
 
-    let source = flow_graph.add_node("flow_source".to_string());
-    let sink = flow_graph.add_node("flow_sink".to_string());
+    let source = flow_graph.add_node(NodeLabel::Source);
+    let sink = flow_graph.add_node(NodeLabel::Sink);
 
     for p in participants {
-        let p_s = flow_graph.add_node(format!("{}_send", p.name));
-        let p_r = flow_graph.add_node(format!("{}_receive", p.name));
+        let p_s = flow_graph.add_node(NodeLabel::Sender(p.clone()));
+        let p_r = flow_graph.add_node(NodeLabel::Receiver(p.clone()));
         flow_graph.add_edge(source, p_s, 1);
         flow_graph.add_edge(p_r, sink, 1);
         node_owners.insert(p.clone(), (p_s, p_r));
@@ -62,7 +70,7 @@ fn construct_flow_network(
     }
 }
 
-fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<String, usize>) -> Option<HashSet<Assignment<Participant>>> {
+fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Option<HashSet<Assignment<Participant>>> {
     let (flow, edge_capacities) = petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
@@ -75,17 +83,14 @@ fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetw
 
     for (edge_capacity, edge) in zip(edge_capacities.iter(), flow_network.graph.raw_edges().iter()) {
         if *edge_capacity == 0 { continue; }
-        let sender_name = flow_network.graph[edge.source()].clone().split_once("_").unwrap().0.to_string();
-        let receiver_name = flow_network.graph[edge.target()].clone().split_once("_").unwrap().0.to_string();
-        if sender_name.contains("flow") || receiver_name.contains("flow") { continue; }
-        // TODO: see if there's a universe where we can switch from using names to using Rc<Participant> directly
-        // so we don't have to do this lookup
-        let sender = participants.iter().find(|p| p.name == sender_name).unwrap();
-        let receiver = participants.iter().find(|p| p.name == receiver_name).unwrap();
-        assignments.insert(Assignment {
-            sender: sender.clone(),
-            recipient: receiver.clone(),
-        });
+        let sender = &flow_network.graph[edge.source()];
+        let receiver = &flow_network.graph[edge.target()];
+        if let (NodeLabel::Sender(sender), NodeLabel::Receiver(receiver)) = (sender, receiver) {
+            assignments.insert(Assignment {
+                sender: sender.clone(),
+                recipient: receiver.clone(),
+            });
+        }
     }
 
     Some(assignments)
@@ -158,14 +163,14 @@ mod tests {
 
         // Included within this test is some implementation detail knowledge about the names of the nodes in the flow network.
         // This feels a little bad, so if there's a way to change this nicely, look into that.
-        let source_node_index = graph.node_indices().find(|&node| graph[node] == "flow_source").unwrap().index();
-        let sink_node_index = graph.node_indices().find(|&node| graph[node] == "flow_sink").unwrap().index();
-        let p1_send_index = graph.node_indices().find(|&node| graph[node] == "Alice_send").unwrap().index();
-        let p1_receive_index = graph.node_indices().find(|&node| graph[node] == "Alice_receive").unwrap().index();
-        let p2_send_index = graph.node_indices().find(|&node| graph[node] == "Bob_send").unwrap().index();
-        let p2_receive_index = graph.node_indices().find(|&node| graph[node] == "Bob_receive").unwrap().index();
-        let p3_send_index = graph.node_indices().find(|&node| graph[node] == "Charlie_send").unwrap().index();
-        let p3_receive_index = graph.node_indices().find(|&node| graph[node] == "Charlie_receive").unwrap().index();
+        let source_node_index = flow_network.source.index();
+        let sink_node_index = flow_network.sink.index();
+        let p1_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p1.clone())).unwrap().index();
+        let p1_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p1.clone())).unwrap().index();
+        let p2_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p2.clone())).unwrap().index();
+        let p2_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p2.clone())).unwrap().index();
+        let p3_send_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Sender(p3.clone())).unwrap().index();
+        let p3_receive_index = graph.node_indices().find(|&node| graph[node] == NodeLabel::Receiver(p3.clone())).unwrap().index();
         assert_eq!(edges, HashSet::from_iter(vec![
             (source_node_index, p1_send_index, 1),
             (source_node_index, p2_send_index, 1),
