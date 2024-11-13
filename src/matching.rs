@@ -16,12 +16,12 @@ but otherwise, the perfect matching corresponds to a cycle cover in G.
 
 use std::{collections::{HashMap, HashSet}, fmt::Display, iter::zip, rc::Rc};
 
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::{graph::{DiGraph, NodeIndex}, visit::EdgeRef};
 
 use crate::{configuration::Participant, permutation::Assignment};
 
-#[derive(Debug, Clone, PartialEq)]
-enum NodeLabel {
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub enum NodeLabel {
     Source,
     Sink,
     Sender(Rc<Participant>),
@@ -39,13 +39,13 @@ impl Display for NodeLabel {
     }
 }
 
-struct FlowNetwork<NodeDataType, EdgeDataType> {
+pub struct FlowNetwork<NodeDataType, EdgeDataType> {
     graph: DiGraph<NodeDataType, EdgeDataType>,
     source: NodeIndex,
     sink: NodeIndex,
 }
 
-fn construct_flow_network(
+pub fn construct_flow_network(
     participants: &HashSet<Rc<Participant>>,
     cannot_send_to: &HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
     cannot_receive_from: &HashMap<Rc<Participant>, HashSet<Rc<Participant>>>,
@@ -81,13 +81,28 @@ fn construct_flow_network(
     }
 }
 
-fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Option<HashSet<Assignment<Rc<Participant>>>> {
+pub fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetwork<NodeLabel, usize>) -> Result<HashSet<Assignment<Rc<Participant>>>, HashSet<NodeLabel>> {
     let (flow, edge_capacities) = petgraph::algo::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
     // there is at least one participant who is not receiving a gift (a matching is impossible)
     if flow != participants.len() {
-        return None;
+        // Accumulate a list of participants who do not have an edge of weight 1 to another participant
+        let mut problematic_nodes = HashSet::new();
+
+        for edge in flow_network.graph.edges(flow_network.source) {
+            if edge_capacities[edge.id().index()] == 0 {
+                problematic_nodes.insert(flow_network.graph[edge.target()].clone());
+            }
+        }
+
+        for edge in flow_network.graph.edges(flow_network.sink) {
+            if edge_capacities[edge.id().index()] == 0 {
+                problematic_nodes.insert(flow_network.graph[edge.source()].clone());
+            }
+        }
+
+        return Err(problematic_nodes);
     }
 
     let mut assignments = HashSet::new();
@@ -104,7 +119,7 @@ fn get_matchings(participants: &HashSet<Rc<Participant>>, flow_network: FlowNetw
         }
     }
 
-    Some(assignments)
+    Ok(assignments)
 }
 
 #[cfg(test)]
@@ -260,8 +275,8 @@ mod tests {
         cannot_receive_from.insert(p3.clone(), HashSet::new());
 
         let flow_network = construct_flow_network(&participants, &cannot_send_to, &cannot_receive_from);
-        let assignments = get_matchings(&participants, flow_network);
-
-        assert!(assignments.is_none());
+        let problematic_nodes = get_matchings(&participants, flow_network).unwrap_err();
+        
+        assert!(problematic_nodes.len() == 1);
     }
 }

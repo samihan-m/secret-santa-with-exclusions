@@ -7,7 +7,7 @@ use std::fs;
 use std::iter::zip;
 use std::rc::Rc;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 mod configuration;
 mod permutation;
@@ -15,6 +15,12 @@ mod matching;
 
 use crate::configuration::{Configuration, Participant};
 use crate::permutation::{Permutation, Assignment};
+
+#[derive(Clone, Debug, ValueEnum)]
+enum MatchingMethod {
+    Permutation,
+    FlowNetwork,
+}
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -25,6 +31,10 @@ struct Args {
     /// Output directory path
     #[arg(short, long, default_value = "./matchings")]
     output_directory_path: String,
+
+    /// Matching method
+    #[arg(short, long, value_enum, default_value_t = MatchingMethod::Permutation)]
+    matching_method: MatchingMethod,
 
     /// Verbose flag
     #[arg(short = 'v', long = "verbose", default_value = "false")]
@@ -195,6 +205,32 @@ fn generate_valid_permutation(
     }
 }
 
+fn try_generate_assignments_via_flow_network(
+    configuration: Configuration,
+) -> Result<HashSet<Assignment<Rc<Participant>>>, String> {
+    let flow_network = matching::construct_flow_network(
+        &configuration.participants,
+        &configuration.cannot_send_to,
+        &configuration.cannot_receive_from
+    );
+
+    matching::get_matchings(&configuration.participants, flow_network)
+        .map_err(|problematic_nodes| {
+            format!(
+                "Failed to find a valid assignment: {}",
+                problematic_nodes.into_iter()
+                    .filter_map(|p| {
+                        match p {
+                            matching::NodeLabel::Sender(p) => Some(format!("{} is unable to send to anyone", p.name)),
+                            matching::NodeLabel::Receiver(p) => Some(format!("{} is unable to receive from anyone", p.name)),
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>().join(", ")
+            )
+        })
+}
+
 fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, output_directory: &str) -> String {
     // Create matchings directory if necessary
     if let Err(_) = fs::create_dir(output_directory) {
@@ -257,11 +293,26 @@ fn main() {
         eprintln!("{:?}", participant.name);
     }
 
-    eprintln!("Generating valid permutation...");
-    let permutation = generate_valid_permutation(configuration, arguments.do_be_verbose);
+    let assignments = match arguments.matching_method {
+        MatchingMethod::Permutation => {
+            eprintln!("Generating valid permutation...");
+            generate_valid_permutation(configuration, arguments.do_be_verbose).assignments
+        }
+        MatchingMethod::FlowNetwork => {
+            eprintln!("Generating assignments via flow network...");
+            match try_generate_assignments_via_flow_network(configuration) {
+                Ok(assignments) => assignments,
+                Err(message) => {
+                    eprintln!("{}", message);
+                    eprintln!("Exiting...");
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
 
     eprintln!("Writing matching files...");
-    let output_directory = write_matching_files(permutation.assignments, &arguments.output_directory_path);
+    let output_directory = write_matching_files(assignments, &arguments.output_directory_path);
     eprintln!("Done! Wrote matchings to {}.", output_directory);
 
     let duration = start_time.elapsed();
