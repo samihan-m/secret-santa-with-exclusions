@@ -32,11 +32,11 @@ struct Args {
     #[arg(short, long, default_value = "./matchings")]
     output_directory_path: String,
 
-    /// Matching method
+    /// Matching method. "flow-network" is recommended, as it will terminate if a valid assignment cannot be found, unlike "permutation".
     #[arg(short, long, value_enum, default_value_t = MatchingMethod::Permutation)]
     matching_method: MatchingMethod,
 
-    /// Verbose flag
+    /// Verbose flag. Has no effect when using the flow-network matching method.
     #[arg(short = 'v', long = "verbose", default_value = "false")]
     do_be_verbose: bool,
 }
