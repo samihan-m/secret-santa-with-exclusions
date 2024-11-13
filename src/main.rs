@@ -91,7 +91,6 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
         let mut csv_reader = csv::Reader::from_path(file_path)?;
         let submissions = csv_reader
             .deserialize()
-            .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
         Ok(submissions)
     }
@@ -117,7 +116,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
                     .cannot_send_to_submitter
                     .iter()
                     .filter_map(|name| participant_map.get(name))
-                    .map(|p| p.clone())
+                    .cloned()
                     .collect(),
             )
         })
@@ -132,7 +131,7 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
                     .cannot_receive_from_submitter
                     .iter()
                     .filter_map(|name| participant_map.get(name))
-                    .map(|p| p.clone())
+                    .cloned()
                     .collect(),
             )
         })
@@ -140,13 +139,13 @@ fn read_configuration_from_csv(file_path: &str) -> Configuration {
 
     let participants: HashSet<Rc<Participant>> = participant_map
         .values()
-        .map(|participant| Rc::clone(participant))
+        .map(Rc::clone)
         .collect();
 
     Configuration {
-        participants: participants,
-        cannot_send_to: cannot_send_to,
-        cannot_receive_from: cannot_receive_from,
+        participants,
+        cannot_send_to,
+        cannot_receive_from,
     }
 }
 
@@ -233,7 +232,7 @@ fn try_generate_assignments_via_flow_network(
 
 fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, output_directory: &str) -> String {
     // Create matchings directory if necessary
-    if let Err(_) = fs::create_dir(output_directory) {
+    if fs::create_dir(output_directory).is_err() {
         eprintln!(
             "Failed to create output directory {}, assuming it already exists.",
             output_directory
@@ -246,7 +245,7 @@ fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, outpu
         output_directory,
         chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
     );
-    if let Err(_) = fs::create_dir(output_directory.clone()) {
+    if fs::create_dir(output_directory.clone()).is_err() {
         eprintln!(
             "Failed to create output directory {}, assuming it already exists.",
             output_directory
@@ -269,15 +268,12 @@ fn write_matching_files(assignments: HashSet<Assignment<Rc<Participant>>>, outpu
 
         fs::write(
             format!("{}/{}.txt", output_directory, sender.name),
-            format!(
-                "{}",
-                padding_disclaimer + vertical_padding + information + closing
-            ),
+            padding_disclaimer + vertical_padding + information + closing
         )
         .unwrap();
     }
 
-    return output_directory;
+    output_directory
 }
 
 fn main() {
