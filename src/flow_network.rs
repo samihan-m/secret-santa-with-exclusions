@@ -27,7 +27,7 @@ use petgraph::{
     visit::EdgeRef,
 };
 
-use crate::{configuration::Participant, permutation::Assignment, rng_ford_fulkerson};
+use crate::{configuration::Participant, permutation::Assignment, random_ford_fulkerson};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum NodeLabel {
@@ -102,7 +102,7 @@ pub fn get_matchings(
     be_verbose: bool,
 ) -> Result<HashSet<Assignment<Rc<Participant>>>, HashSet<NodeLabel>> {
     let (flow, edge_capacities) =
-        rng_ford_fulkerson::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
+        random_ford_fulkerson::ford_fulkerson(&flow_network.graph, flow_network.source, flow_network.sink);
 
     // If the flow is not equal to the number of participants, then that means
     // there is at least one participant who is not receiving a gift (a matching is impossible)

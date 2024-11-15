@@ -12,7 +12,7 @@ use clap::{Parser, ValueEnum};
 mod configuration;
 mod flow_network;
 mod permutation;
-mod rng_ford_fulkerson;
+mod random_ford_fulkerson;
 
 use crate::configuration::{Configuration, Participant};
 use crate::permutation::{Assignment, Permutation};

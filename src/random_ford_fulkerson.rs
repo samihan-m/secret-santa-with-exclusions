@@ -1,4 +1,5 @@
-/// A copy of petgraph's ford_fulkerson.rs with the addition of a random shuffle of a node's edges before adding them to the queue.
+//! A copy of petgraph's ford_fulkerson.rs with the addition of a random shuffle in [`has_augmented_path`].
+
 use std::{collections::VecDeque, ops::Sub};
 
 use petgraph::{
@@ -49,7 +50,8 @@ where
     }
 }
 
-/// Tells whether there is an augmented path in the graph
+/// Tells whether there is an augmented path in the graph.
+/// Randomly shuffles the list of a node's neighbors before adding them to the queue of nodes to visit during BFS.
 fn has_augmented_path<N>(
     network: N,
     source: N::NodeId,
