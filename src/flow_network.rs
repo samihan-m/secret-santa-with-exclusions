@@ -147,6 +147,9 @@ pub fn get_matchings(
         eprintln!("{}", Dot::new(&post_network));
     }
 
+    // TODO: Write this representation to a file.
+    // Also, write an anonymized version of the representation (i.e. replace names with numbers) to a file.
+
     for (edge_capacity, edge) in zip(
         edge_capacities.iter(),
         flow_network.graph.raw_edges().iter(),
